@@ -1,0 +1,20 @@
+{
+  "name": "villa-budget",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Villa shared-expense budget: bi-monthly collections, pro-rata leave, Cash & Digital funds",
+  "workspaces": [
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "dev": "concurrently -k -n api,web -c blue,green \"npm run dev -w server\" \"npm run dev -w client\"",
+    "build": "npm run build -w client",
+    "start": "npm run start -w server",
+    "test": "npm test -w server",
+    "seed": "npm run seed -w server"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.7"
+  }
+}

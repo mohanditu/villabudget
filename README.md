@@ -4,6 +4,8 @@ A web app for a shared villa (about 18 residents). It handles:
 - 100 AED collections on the 1st and the 15th of every month
 - **pro-rata leave**: people pay only for the days they are in the villa
 - **Cash** and **Digital** balances, transfers between them, and expenses
+- **groceries**: what was bought, when, and at what price, item by item, with each item's price history
+- **products**: the list of things the villa buys, searched when grocery items are entered
 - balances carried forward from cycle to cycle.
 
 **Stack:** React 19 + Vite (client) · Node.js + Express 5 + Mongoose (API) · MongoDB Atlas.
@@ -22,7 +24,7 @@ Other commands:
 
 | Command | What it does |
 |---|---|
-| `npm test` | Unit tests of the calculation engine (Vinay leave example, carry-forward, join/exit, rounding) |
+| `npm test` | Unit tests of the calculation engine (Vinay leave example, carry-forward, join/exit, rounding) and the grocery price summary |
 | `npm run build` | Builds the React app into `client/dist` |
 | `npm start` | Starts the API. If `client/dist` exists it also serves the built app on port 4100 |
 
@@ -79,7 +81,25 @@ On the **Expenses** page you can attach bills while adding or editing an expense
 - **Formats:** JPG, PNG, WEBP and PDF, up to 10 MB each, and at most 10 per expense. The server checks each file's real type from its first bytes, so a renamed file can't get through.
 - **Photo resizing:** photos are resized in the browser before upload (longest side 1800 px, JPEG). A typical 3–5 MB phone photo becomes about 50–400 KB, which keeps the database small.
 - **Storage:** files are stored in MongoDB (GridFS bucket `bills`), so every device sees them. Deleting a bill or its expense deletes the file.
-- **Re-importing the sheet** keeps bills on expenses that still match (same date, category, amount, paid from and description) and lists any it can't match.
+- **Re-importing the sheet** keeps bills (and grocery item lists) on expenses that still match (same date, category, amount, paid from and description) and lists any it can't match.
+
+## Groceries (what we bought, the price and the date)
+The **Groceries** page keeps track of every shopping trip and what was in it.
+
+- **One trip = one Grocery expense.** Adding a purchase here creates a normal expense in the *Grocery* category, so it comes out of the Cash or Digital fund and appears on the Expenses page too. Don't enter it on both pages. Grocery expenses entered on the Expenses page (or imported from the sheet) show up here and can be itemised later with **add items**.
+- **Items:** type one line per item from the receipt: name, quantity, unit and the price paid for that line (e.g. *Onion · 2 · kg · 6.00*). The item box **searches the product list** as you type (name or category, with each product's unit and last price); pick with a tap or ↑ ↓ Enter, and the product's usual unit is filled in and the cursor moves to the quantity. A name that isn't a product yet is still accepted and is added to Products when you save. A new empty line appears as you type. The **bill total** adds itself up; you can overwrite it (bags, VAT, a discount), and the page shows the difference.
+- **Price check while typing:** for an item bought before, the line shows the last purchase, e.g. *Last bought 4 Nov (Noor): 2 kg for 6.00 = 3.00/kg · now 4.00/kg ▲ 33%*.
+- **Items & prices:** one row per item, with how often it was bought, the last date, the latest price per kg / litre / piece (▲ dearer or ▼ cheaper than the time before), the lowest, highest and average price, the total quantity and the total spent. Click an item to see every purchase of it, with the cheapest and dearest marked.
+- **Units:** pcs, kg, g, L, ml, pack, dozen, bundle, bottle, box, bag, tray. For price comparison, g counts as kg, ml as L and a dozen as 12 pcs. Names are matched ignoring capitals and extra spaces, so *Onion* and *onion* are the same item.
+- **Which category?** Settings → *Category shown on the Groceries page* (default *Grocery*).
+
+## Products (the list of things we buy)
+The **Products** page is where the product list is kept. Each product has a name, a category (Vegetables, Dairy & Eggs, Spices & Masala…, or your own), its usual unit and optional notes.
+
+- **Adding:** after you add one, the category and unit stay filled in, so a run of vegetables is quick to enter. Names are unique ignoring capitals and spaces (*onion* = *Onion*).
+- **The list** is grouped by category, and shows how often each product was bought, when, its latest price per unit (▲ / ▼ against the time before), the lowest price and the total spent. Search by name or category, or filter by category.
+- **Items from purchases:** an item typed on the Groceries page that isn't a product yet is added on save, without a category. Give it one with **edit**. Items saved before the product list existed are shown at the top with an **Add them** button.
+- **Renaming** a product renames it in past purchases too, so its price history stays together. A product that is in purchases can't be deleted (rename it instead).
 
 ## Replacing the data from the Google Sheet
 [server/data/google-sheet-snapshot.json](server/data/google-sheet-snapshot.json) is a copy of the villa's Google Sheet, taken on 20 Nov 2026. It contains settings, members, leaves, payments, expenses and transfers. To load it (or a newer copy) into MongoDB:
@@ -94,10 +114,11 @@ The import checks every row first and saves the current data to `backups/db-<tim
 ## Project layout
 
 ```
-client/            React + Vite app (pages: Dashboard, Collections, Members, Leaves, Expenses, Transfers, Settings)
+client/            React + Vite app (pages: Dashboard, Collections, Members, Leaves, Expenses, Groceries, Products, Transfers, Settings)
 server/src/
   lib/ledger.js    calculation engine (pure)
   lib/dates.js     cycle & date helpers (dates are "YYYY-MM-DD" strings)
+  lib/groceries.js grocery item & product checks and the per-item price summary (pure)
   models/          Mongoose schemas
   routes/api.js    REST API
   seed.js          starting data for an empty database

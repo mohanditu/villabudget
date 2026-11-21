@@ -135,6 +135,31 @@ The application replaces the villa's Excel workbook with a web application. The 
 | FR-E4 | The expense list can be filtered by month and shows totals by fund and by category. |
 | FR-E5 | *(Phase 2)* Attach a photo of the receipt. |
 
+### 3.6.1 Groceries (FR-G)
+A grocery shopping trip is an expense in the grocery category (Settings → *Category shown on the Groceries page*, default **Grocery**), with a list of the items bought. There is no separate grocery ledger, so grocery money is never counted twice.
+
+| ID | Requirement |
+|---|---|
+| FR-G1 | Admin can add a grocery purchase: date, paid from (Cash / Digital), bought by, shop / note, bill / ref no., and any number of items (up to 200). Each item has a name, quantity, unit (pcs, kg, g, L, ml, pack, dozen, bundle, bottle, box, bag, tray) and the price paid for that line. |
+| FR-G2 | The bill total defaults to the sum of the item prices and can be changed (e.g. for bags, VAT or a discount); the screen shows the difference. A purchase may be saved without items and itemised later. |
+| FR-G3 | The purchase is saved as an expense, so it reduces the Cash or Digital fund exactly as in FR-E1–E3 and also appears on the Expenses screen. Editing it on the Expenses screen keeps its items. |
+| FR-G4 | The Groceries screen lists every expense in the grocery category (including ones entered on the Expenses screen), filterable by month and searchable by item, shop or person. |
+| FR-G5 | Items & prices: one row per item (names compared ignoring case and extra spaces) with times bought, last bought date, last quantity and price, latest / lowest / highest / average price per base unit, total quantity and total spent, plus the full purchase history. |
+| FR-G6 | Prices are compared per base unit: g → kg, ml → L, dozen → 12 pcs. Unit-price figures only use purchases in the same base unit as the latest one. The change against the previous purchase is shown as ▲ dearer / ▼ cheaper. |
+| FR-G7 | While typing an item that was bought before, the screen shows its last purchase (date, shop, quantity, price, price per unit) and how today's price compares. |
+| FR-G8 | Re-importing the Google Sheet keeps item lists on expenses that still match (same rule as bills) and lists the ones it cannot match. |
+| FR-G9 | The item name box searches the product list (FR-P) as the user types: by name (starts-with first) or category, showing each product's category, unit and last price; with no text it lists the most recently bought first. Choosing a product fills the name and its usual unit. Keyboard: ↑ ↓ to move, Enter to pick (Enter never submits the purchase), Esc to close. |
+| FR-G10 | A typed name that is not a product is accepted; it is added to the product list (unit from that line, no category) when the purchase is saved, and the screen says so before and after saving. |
+
+### 3.6.2 Products (FR-P)
+| ID | Requirement |
+|---|---|
+| FR-P1 | Admin can add a product: name (required, unique ignoring letter case and extra spaces), category (suggested list or free text), usual unit, notes. |
+| FR-P2 | The product list is grouped by category and can be searched by name or category and filtered by category. Each product shows times bought, last bought date, latest price per unit with the change against the previous purchase, lowest price and total spent (from grocery items with the same name). |
+| FR-P3 | Admin can edit a product. Renaming it also renames the matching items in past purchases, so its price history stays together. Renaming onto another product's name is refused (409). |
+| FR-P4 | A product that appears in any purchase cannot be deleted (409 with the reason); unused products can. |
+| FR-P5 | Items in purchases that are not products (e.g. saved before the product list existed) are listed on the Products screen with an action that adds them all. |
+
 ### 3.7 Dashboard and reports (FR-D)
 | ID | Requirement |
 |---|---|
@@ -212,12 +237,13 @@ The 15th cycle's total due is 17 × 100 + 93.75 = **1,793.75 AED**.
 
 | Collection | Key fields | Notes |
 |---|---|---|
-| `settings` | key=`main`, villaName, startMonth, collectionAmount, roundDecimals, minLeaveDays, openingCash, openingDigital, categories[] | Singleton |
+| `settings` | key=`main`, villaName, startMonth, collectionAmount, roundDecimals, minLeaveDays, openingCash, openingDigital, categories[], groceryCategory | Singleton |
 | `members` | name (unique), room, phone, joinDate, exitDate, openingBalance, notes | No hard delete once used |
 | `leaves` | member → members, startDate, endDate, reason | Indexed by member; no overlaps per member |
 | `payments` | member → members, cycle (`YYYY-MM-01/15`), date, mode (Cash/Digital), amount, note | Several per member per cycle allowed; negative = refund |
-| `expenses` | date, category, description, paidFrom (Cash/Digital), amount, paidBy, ref | Indexed by date |
+| `expenses` | date, category, description, paidFrom (Cash/Digital), amount, paidBy, ref, bills[], items[] (name, qty, unit, price) | Indexed by date; items list what a grocery trip bought |
 | `transfers` | date, direction, amount, doneBy, notes | Indexed by date |
+| `products` | name, key (lower-case name, unique), category, unit, notes | Grocery items link to a product by `key` |
 | `users`, `auditlogs` | *(phase 2)* | Roles and change history |
 
 Dates are stored as ISO strings `YYYY-MM-DD`, which avoids time-zone shifts. Dues and balances are **not stored**. They are always derived from the records above by the calculation engine, so a correction anywhere is reflected everywhere.
@@ -235,13 +261,16 @@ Dates are stored as ISO strings `YYYY-MM-DD`, which avoids time-zone shifts. Due
 | GET | `/api/members/:id/statement` | Per-cycle statement for one member |
 | GET / POST / PUT / DELETE | `/api/leaves[/:id]` | Leaves (validated, no overlap) |
 | POST / DELETE | `/api/payments[/:id]` | Record / remove a payment |
-| GET / POST / PUT / DELETE | `/api/expenses[/:id]` | Expenses |
+| GET / POST / PUT / DELETE | `/api/expenses[/:id]` | Expenses (an optional `items` list is checked and replaced only when sent) |
+| GET | `/api/groceries` | Grocery-category expenses, the unit list, the per-item price summary and the product list |
+| GET / POST / PUT / DELETE | `/api/products[/:id]` | Product list with price stats and not-yet-listed items; rename also renames past items; delete only if unused |
+| POST | `/api/products/from-purchases` | Add every item from past purchases that is not a product yet |
 | GET / POST / PUT / DELETE | `/api/transfers[/:id]` | Transfers |
 
 Errors return `{ "error": "message" }` with 400 (validation), 404 (not found) or 409 (conflict).
 
 ### Screens
-Dashboard · Collections (per cycle) · Members · Member statement · Leaves · Expenses · Transfers · Settings.
+Dashboard · Collections (per cycle) · Members · Member statement · Leaves · Expenses · Groceries · Products · Transfers · Settings.
 
 ---
 
@@ -281,7 +310,7 @@ Dashboard · Collections (per cycle) · Members · Member statement · Leaves ·
 | Members | Members screen, `members` collection |
 | Leave Log | Leaves screen, `leaves` collection |
 | Month tabs (Nov-26 … Oct-27) | Collections screen (one cycle at a time), `payments` collection |
-| Expenses | Expenses screen, `expenses` collection |
+| Expenses | Expenses screen, `expenses` collection; grocery rows also on the Groceries screen |
 | Transfers | Transfers screen, `transfers` collection |
 | Dashboard | Dashboard screen (`/api/ledger`) |
 | Member Summary | Members list and member statement |

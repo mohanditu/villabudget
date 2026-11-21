@@ -284,6 +284,56 @@ button.ghost.danger:hover:not(:disabled) { background: var(--rose-soft); }
 .radio-card small { display: block; margin-top: .1rem; font-size: .75rem; color: var(--muted); }
 .grid td.amt-changed { color: var(--violet); font-weight: 700; background: var(--violet-soft) !important; }
 
+/* ───────────────────────── Groceries ───────────────────────── */
+.items-field { grid-column: 1 / -1; display: flex; flex-direction: column; gap: .45rem; padding: .85rem .9rem;
+  border: 1px solid var(--line); border-radius: 12px; background: #f8fafc; }
+.items-title { display: flex; gap: .3rem .8rem; align-items: baseline; flex-wrap: wrap; font-size: .76rem; font-weight: 600; color: #475569; }
+.items-title .muted { font-weight: 500; }
+.items-head, .item-row { display: grid; grid-template-columns: minmax(0, 1fr) 5.5rem 6.5rem 7.5rem 2.3rem; gap: .5rem; align-items: center; }
+.items-head { font-size: .68rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 700; }
+.item-row input, .item-row select { width: 100%; min-width: 0; }
+.item-row button.icon-btn { justify-content: center; padding: .45rem 0; }
+.item-hint { grid-column: 1 / -1; margin: -.15rem 0 .1rem .2rem; font-size: .75rem; color: var(--muted); }
+.trend { font-size: .72rem; font-weight: 700; white-space: nowrap; }
+.trend.up { color: var(--rose); }
+.trend.down { color: var(--emerald); }
+.total-row { grid-column: 1 / -1; display: flex; gap: .4rem 1rem; align-items: flex-end; flex-wrap: wrap; }
+.total-row .field { width: 210px; }
+.total-note { margin: 0 0 .55rem; font-size: .82rem; color: var(--muted); }
+.total-note .icon { color: var(--emerald); }
+.total-note .warn { color: var(--amber); font-weight: 600; }
+.item-chips { display: flex; flex-wrap: wrap; gap: .3rem; min-width: 14rem; max-width: 30rem; }
+.item-chip { display: inline-flex; gap: .3rem; align-items: baseline; padding: .14rem .5rem; border-radius: 7px;
+  background: var(--teal-soft); color: #115e59; font-size: .76rem; font-weight: 600; }
+.item-chip small { color: var(--muted); font-weight: 500; font-variant-numeric: tabular-nums; }
+button.link.add-items { color: var(--teal); font-size: .8rem; }
+button.link.item-toggle { padding: .1rem 0; color: var(--ink); text-align: left; }
+.search { position: relative; display: inline-flex; align-items: center; }
+.search .icon { position: absolute; left: .6rem; color: var(--muted); pointer-events: none; }
+.search input { padding-left: 2rem; width: 15rem; max-width: 100%; }
+.grid tr.history > td { background: #f8fafc !important; padding: .2rem .6rem .8rem 1.8rem; }
+.history-wrap { max-width: 900px; }
+
+/* ───────────────────────── Product search (Groceries) & Products page ───────────────────────── */
+.combo { position: relative; min-width: 0; }
+.combo input { width: 100%; }
+.combo-list { position: absolute; z-index: 30; top: calc(100% + 4px); left: 0; right: 0; min-width: 16rem; max-height: 17rem; overflow-y: auto;
+  margin: 0; padding: .3rem; list-style: none; background: var(--card); border: 1px solid #c7d2fe; border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, .18); }
+.combo-list li { display: flex; flex-direction: column; gap: .05rem; padding: .45rem .6rem; border-radius: 8px; cursor: pointer; }
+.combo-list li.active { background: var(--primary-soft); }
+.combo-name { font-size: .88rem; font-weight: 600; color: var(--ink); }
+.combo-meta { font-size: .74rem; color: var(--muted); }
+.combo-list li.combo-new { cursor: default; font-size: .78rem; color: var(--muted); background: var(--amber-soft); margin-top: .2rem; }
+.combo-list li.combo-new b { color: var(--ink); }
+.item-hint .new-product { color: var(--amber); font-weight: 600; }
+.preview.unlisted { display: flex; align-items: center; justify-content: space-between; gap: .6rem 1rem; flex-wrap: wrap; margin-bottom: .9rem; }
+.preview.unlisted button { padding: .35rem .8rem; font-size: .8rem; }
+.grid tr.group td { background: var(--slate-soft) !important; color: var(--ink); font-weight: 700; font-size: .78rem;
+  text-transform: uppercase; letter-spacing: .04em; padding-top: .45rem; padding-bottom: .45rem; }
+.grid td.not-bought { text-align: center; font-style: italic; }
+button.link:disabled { color: var(--muted); text-decoration: none; }
+
 /* ───────────────────────── Responsive ───────────────────────── */
 @media (max-width: 900px) {
   /* minmax(0,1fr) stops wide tables from stretching the page; auto row keeps the top bar compact */
@@ -299,4 +349,13 @@ button.ghost.danger:hover:not(:disabled) { background: var(--rose-soft); }
   .modal-backdrop { padding: .5rem; }
   .modal-title .name { max-width: 12rem; }
   .amount-form, .amount-form .scope { grid-template-columns: 1fr; }
+  .search input { width: 12rem; }
+}
+@media (max-width: 640px) {
+  /* item rows: name on its own line, then qty / unit / price / remove */
+  .items-head { display: none; }
+  .item-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr) 2.3rem; padding-bottom: .55rem; border-bottom: 1px dashed var(--line); }
+  .item-row .item-name { grid-column: 1 / -1; }
+  .total-row .field { width: 100%; }
+  .grid tr.history > td { padding-left: .6rem; }
 }

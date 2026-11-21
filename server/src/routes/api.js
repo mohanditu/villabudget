@@ -1,11 +1,14 @@
 import express, { Router } from 'express';
 import mongoose from 'mongoose';
-import { Settings, Member, Leave, Payment, Expense, Transfer, getSettings } from '../models/index.js';
+import { Settings, Member, Leave, Payment, Expense, Transfer, Product, getSettings } from '../models/index.js';
 import { computeLedger, leaveCreditEstimate, leaveDayCount } from '../lib/ledger.js';
 import { todayISO, cycleKeyOf, nextCycleKey } from '../lib/dates.js';
 import {
   MAX_BILL_BYTES, MAX_BILLS_PER_EXPENSE, sniffBillType, cleanBillName, saveBillFile, findBillFile, deleteBillFiles, billsBucket,
 } from '../lib/bills.js';
+import {
+  UNITS, BASE_UNITS, PRODUCT_CATEGORIES, cleanItems, cleanProduct, summarizeItems, itemKey, sameNameRegExp,
+} from '../lib/groceries.js';
 
 export const api = Router();
 const tz = () => process.env.TZ_VILLA || 'Asia/Dubai';
@@ -36,7 +39,7 @@ async function ledger(untilKey) {
 // ---------------------------------------------------------------- settings
 api.get('/settings', wrap(async (_req, res) => res.json(await getSettings())));
 api.put('/settings', wrap(async (req, res) => {
-  const fields = ['villaName', 'startMonth', 'collectionAmount', 'roundDecimals', 'minLeaveDays', 'leaveMethod', 'dailyRate', 'openingCash', 'openingDigital', 'categories'];
+  const fields = ['villaName', 'startMonth', 'collectionAmount', 'roundDecimals', 'minLeaveDays', 'leaveMethod', 'dailyRate', 'openingCash', 'openingDigital', 'categories', 'groceryCategory'];
   const doc = await Settings.findOneAndUpdate({ key: 'main' }, pick(req.body, fields), { returnDocument: 'after', upsert: true, runValidators: true });
   res.json(doc);
 }));
@@ -173,12 +176,17 @@ api.post('/payments', wrap(async (req, res) => {
 api.delete('/payments/:id', wrap(async (req, res) => { await Payment.findByIdAndDelete(req.params.id); res.status(204).end(); }));
 
 // ---------------------------------------------------------------- expenses & transfers
-function crud(path, Model, fields, sort, { beforeDelete } = {}) {
+function crud(path, Model, fields, sort, { beforeDelete, prepare = (b) => b, afterSave = async () => {} } = {}) {
   api.get(path, wrap(async (_req, res) => res.json(await Model.find().sort(sort).lean())));
-  api.post(path, wrap(async (req, res) => res.status(201).json(await Model.create(pick(req.body, fields)))));
+  api.post(path, wrap(async (req, res) => {
+    const doc = await Model.create(prepare(pick(req.body, fields)));
+    await afterSave(doc);
+    res.status(201).json(doc);
+  }));
   api.put(`${path}/:id`, wrap(async (req, res) => {
-    const doc = await Model.findByIdAndUpdate(req.params.id, pick(req.body, fields), { returnDocument: 'after', runValidators: true });
+    const doc = await Model.findByIdAndUpdate(req.params.id, prepare(pick(req.body, fields)), { returnDocument: 'after', runValidators: true });
     if (!doc) throw new HttpError(404, 'Not found');
+    await afterSave(doc);
     res.json(doc);
   }));
   api.delete(`${path}/:id`, wrap(async (req, res) => {
@@ -187,8 +195,96 @@ function crud(path, Model, fields, sort, { beforeDelete } = {}) {
     res.status(204).end();
   }));
 }
-crud('/expenses', Expense, ['date', 'category', 'description', 'paidFrom', 'amount', 'paidBy', 'ref'], { date: -1, createdAt: -1 },
-  { beforeDelete: (doc) => deleteBillFiles(doc.bills.map((b) => b.fileId)) });
+crud('/expenses', Expense, ['date', 'category', 'description', 'paidFrom', 'amount', 'paidBy', 'ref', 'items'], { date: -1, createdAt: -1 }, {
+  beforeDelete: (doc) => deleteBillFiles(doc.bills.map((b) => b.fileId)),
+  // items are only replaced when sent, so older clients that don't send them keep what is saved
+  prepare: (body) => ('items' in body ? { ...body, items: cleanItems(body.items) } : body),
+  // an item typed on the Groceries page that isn't a product yet becomes one
+  afterSave: (doc) => ensureProducts(doc.items).catch((err) => console.error('Could not add new products:', err.message)),
+});
+
+// ---------------------------------------------------------------- groceries (itemised Grocery expenses)
+api.get('/groceries', wrap(async (_req, res) => {
+  const category = (await getSettings()).groceryCategory || 'Grocery';
+  const [purchases, products] = await Promise.all([
+    Expense.find({ category }).sort({ date: -1, createdAt: -1 }).lean(),
+    Product.find({}, { name: 1, key: 1, category: 1, unit: 1 }).sort({ key: 1 }).lean(),
+  ]);
+  res.json({ category, units: UNITS, baseUnits: BASE_UNITS, purchases, items: summarizeItems(purchases), products });
+}));
+
+// ---------------------------------------------------------------- products (the list of things we buy)
+/** Adds a product for every item name that isn't one yet (unit from the item). Returns how many were added. */
+async function ensureProducts(items = []) {
+  const byKey = new Map();
+  for (const it of items) {
+    const key = itemKey(it.name);
+    if (key && !byKey.has(key)) byKey.set(key, it);
+  }
+  if (!byKey.size) return 0;
+  try {
+    const res = await Product.bulkWrite([...byKey].map(([key, it]) => ({
+      updateOne: { filter: { key }, update: { $setOnInsert: { key, name: it.name.trim(), unit: it.unit || 'pcs', category: '', notes: '' } }, upsert: true },
+    })), { ordered: false });
+    return res.upsertedCount;
+  } catch (err) {
+    // two saves adding the same new product at once: the other one won, which is fine
+    if (err.code === 11000 || err.writeErrors?.every((w) => w.code === 11000)) return err.result?.upsertedCount ?? 0;
+    throw err;
+  }
+}
+
+const itemizedExpenses = () => Expense.find({ 'items.0': { $exists: true } }, { date: 1, createdAt: 1, description: 1, paidBy: 1, items: 1 }).lean();
+
+api.get('/products', wrap(async (_req, res) => {
+  const [products, itemized] = await Promise.all([Product.find().lean(), itemizedExpenses()]);
+  const summary = summarizeItems(itemized);
+  const stats = new Map(summary.map(({ history, ...s }) => [s.key, s]));
+  const keys = new Set(products.map((p) => p.key));
+  res.json({
+    units: UNITS,
+    categories: [...new Set([...PRODUCT_CATEGORIES, ...products.map((p) => p.category).filter(Boolean)])],
+    products: products.map((p) => ({ ...p, stats: stats.get(p.key) ?? null })),
+    unlisted: summary.filter((s) => !keys.has(s.key)).map((s) => s.name), // bought before, not in the list yet
+  });
+}));
+
+async function checkProductName(body, id) {
+  const other = await Product.findOne({ key: body.key, _id: { $ne: id } }).lean();
+  if (other) throw new HttpError(409, `"${other.name}" is already in the product list`);
+}
+api.post('/products', wrap(async (req, res) => {
+  const body = cleanProduct(req.body);
+  await checkProductName(body);
+  res.status(201).json(await Product.create(body));
+}));
+api.put('/products/:id', wrap(async (req, res) => {
+  const cur = await Product.findById(objectId(req.params.id, 'Product')).lean();
+  if (!cur) throw new HttpError(404, 'Product not found');
+  const body = cleanProduct({ ...cur, ...pick(req.body, ['name', 'category', 'unit', 'notes']) });
+  await checkProductName(body, cur._id);
+  const doc = await Product.findByIdAndUpdate(cur._id, body, { returnDocument: 'after', runValidators: true });
+  let renamed = 0;
+  if (body.name !== cur.name) {
+    // renaming also renames the item in past purchases, so its price history stays in one piece
+    const same = sameNameRegExp(cur.name);
+    const r = await Expense.updateMany({ 'items.name': same }, { $set: { 'items.$[it].name': body.name } }, { arrayFilters: [{ 'it.name': same }] });
+    renamed = r.modifiedCount;
+  }
+  res.json({ ...doc.toObject(), renamedInPurchases: renamed });
+}));
+api.delete('/products/:id', wrap(async (req, res) => {
+  const cur = await Product.findById(objectId(req.params.id, 'Product')).lean();
+  if (!cur) return res.status(204).end();
+  const used = await Expense.countDocuments({ 'items.name': sameNameRegExp(cur.name) });
+  if (used) throw new HttpError(409, `${cur.name} is in ${used} purchase${used === 1 ? '' : 's'}, so it stays in the list (you can rename it).`);
+  await Product.findByIdAndDelete(cur._id);
+  res.status(204).end();
+}));
+api.post('/products/from-purchases', wrap(async (_req, res) => {
+  const summary = summarizeItems(await itemizedExpenses());
+  res.json({ added: await ensureProducts(summary.map((s) => ({ name: s.name, unit: s.last.unit }))) });
+}));
 
 // ---------------------------------------------------------------- bills (photo / PDF attachments)
 const objectId = (v, what) => {

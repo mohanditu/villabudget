@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import { isISODate } from '../lib/dates.js';
+import { UNITS, MAX_ITEMS_PER_EXPENSE } from '../lib/groceries.js';
 
 const { Schema, model } = mongoose;
 
@@ -35,6 +36,8 @@ const SettingsSchema = new Schema({
   openingCash: money,
   openingDigital: money,
   categories: { type: [String], default: ['Water', 'Grocery', 'Gas Cylinder', 'Cleaning Supplies', 'Electricity / Internet', 'Miscellaneous'] },
+  // expenses in this category are the shopping trips listed on the Groceries page
+  groceryCategory: { type: String, default: 'Grocery', trim: true },
 }, opts);
 
 const MemberSchema = new Schema({
@@ -82,6 +85,27 @@ const ExpenseSchema = new Schema({
     }, { _id: false })],
     default: [],
   },
+  // what was bought (Groceries page) – checked by lib/groceries.js cleanItems() before saving
+  items: {
+    type: [new Schema({
+      name: { type: String, required: true, trim: true, maxlength: 80 },
+      qty: { type: Number, required: true, min: 0.001 },
+      unit: { type: String, enum: UNITS, default: 'pcs' },
+      price: { type: Number, required: true, min: 0, set: (v) => Math.round(Number(v) * 100) / 100 },
+    }, { _id: false })],
+    default: [],
+    validate: { validator: (v) => v.length <= MAX_ITEMS_PER_EXPENSE, message: `at most ${MAX_ITEMS_PER_EXPENSE} items` },
+  },
+}, opts);
+
+// The list of things the villa buys (Products page). Grocery items are linked to a product by name:
+// `key` is the name in lower case with single spaces – see lib/groceries.js itemKey().
+const ProductSchema = new Schema({
+  name: { type: String, required: true, trim: true, maxlength: 80 },
+  key: { type: String, required: true, unique: true },
+  category: { type: String, trim: true, default: '', maxlength: 40 },
+  unit: { type: String, enum: UNITS, default: 'pcs' },
+  notes: { type: String, trim: true, default: '', maxlength: 200 },
 }, opts);
 
 const TransferSchema = new Schema({
@@ -98,6 +122,7 @@ export const Leave = model('Leave', LeaveSchema);
 export const Payment = model('Payment', PaymentSchema);
 export const Expense = model('Expense', ExpenseSchema);
 export const Transfer = model('Transfer', TransferSchema);
+export const Product = model('Product', ProductSchema);
 
 export async function getSettings() {
   // hydrated (not lean) so fields added to the schema later get their defaults on older records

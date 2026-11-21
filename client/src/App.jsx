@@ -5,6 +5,8 @@ import Members from './pages/Members.jsx';
 import MemberStatement from './pages/MemberStatement.jsx';
 import Leaves from './pages/Leaves.jsx';
 import Expenses from './pages/Expenses.jsx';
+import Groceries from './pages/Groceries.jsx';
+import Products from './pages/Products.jsx';
 import Transfers from './pages/Transfers.jsx';
 import Settings from './pages/Settings.jsx';
 import { Icon } from './components/icons.jsx';
@@ -15,6 +17,8 @@ const NAV = [
   ['/members', 'Members', 'users'],
   ['/leaves', 'Leaves', 'plane'],
   ['/expenses', 'Expenses', 'receipt'],
+  ['/groceries', 'Groceries', 'cart'],
+  ['/products', 'Products', 'package'],
   ['/transfers', 'Transfers', 'transfer'],
   ['/settings', 'Settings', 'settings'],
 ];
@@ -52,6 +56,8 @@ export default function App() {
           <Route path="/members/:id" element={<MemberStatement />} />
           <Route path="/leaves" element={<Leaves />} />
           <Route path="/expenses" element={<Expenses />} />
+          <Route path="/groceries" element={<Groceries />} />
+          <Route path="/products" element={<Products />} />
           <Route path="/transfers" element={<Transfers />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<p>Page not found.</p>} />

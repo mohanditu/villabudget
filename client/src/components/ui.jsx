@@ -76,6 +76,26 @@ export function PageHeader({ title, subtitle, icon, children }) {
   );
 }
 
+export function SearchBox({ value, onChange, placeholder }) {
+  return (
+    <label className="search">
+      <Icon name="search" size={15} />
+      <input type="search" value={value} placeholder={placeholder} aria-label={placeholder} onChange={(e) => onChange(e.target.value)} />
+    </label>
+  );
+}
+
+/** ▲ 12% (dearer, red) or ▼ 8% (cheaper, green) compared with the purchase before. */
+export function Trend({ change }) {
+  if (change == null || Math.abs(change) < 0.005) return null;
+  const up = change > 0;
+  return (
+    <span className={`trend ${up ? 'up' : 'down'}`} title={`${up ? 'Dearer' : 'Cheaper'} than the time before`}>
+      {up ? '▲' : '▼'} {Math.round(Math.abs(change) * 100)}%
+    </span>
+  );
+}
+
 export function Card({ title, accent, actions, children, className = '' }) {
   return (
     <section className={`card ${accent ? `card-${accent}` : ''} ${className}`}>

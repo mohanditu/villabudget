@@ -27,6 +27,7 @@ export default function Settings() {
         openingCash: Number(form.openingCash),
         openingDigital: Number(form.openingDigital),
         categories: form.categoriesText.split('\n').map((s) => s.trim()).filter(Boolean),
+        groceryCategory: form.groceryCategory,
       });
       setMsg('Settings saved – all balances are recalculated.');
       reload();
@@ -73,6 +74,12 @@ export default function Settings() {
           <Field label="Opening Digital balance (AED)"><input type="number" step="0.01" value={form.openingDigital} onChange={set('openingDigital')} /></Field>
           <Field label="Expense categories (one per line)" wide>
             <textarea rows={7} value={form.categoriesText} onChange={set('categoriesText')} />
+          </Field>
+          <Field label="Category shown on the Groceries page">
+            <select value={form.groceryCategory ?? 'Grocery'} onChange={set('groceryCategory')}>
+              {[...new Set([form.groceryCategory ?? 'Grocery', ...form.categoriesText.split('\n').map((s) => s.trim()).filter(Boolean)])]
+                .map((c) => <option key={c}>{c}</option>)}
+            </select>
           </Field>
           <div className="form-actions"><button type="submit">Save settings</button></div>
         </form>

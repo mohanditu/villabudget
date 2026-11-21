@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api, useData } from '../api.js';
 import { Money, ErrorBanner, Loading, PageHeader, Field, Card, CategoryBadge, ModeBadge, Kpi } from '../components/ui.jsx';
 import { BillDropzone, SavedBills, BillThumbs, AttachButton, BillViewer } from '../components/bills.jsx';
@@ -152,7 +153,12 @@ export default function Expenses() {
               {rows.length === 0 && <tr><td colSpan={9} className="empty">No expenses.</td></tr>}
               {rows.map((x) => (
                 <tr key={x._id}>
-                  <td>{date(x.date)}</td><td><CategoryBadge name={x.category} categories={settings?.categories} /></td><td className="wrap">{x.description}</td><td><ModeBadge mode={x.paidFrom} /></td>
+                  <td>{date(x.date)}</td><td><CategoryBadge name={x.category} categories={settings?.categories} /></td>
+                  <td className="wrap">
+                    {x.description}
+                    {x.items?.length > 0 && <> <Link to="/groceries" className="small" title={x.items.map((i) => i.name).join(', ')}>{plural(x.items.length, 'item')}</Link></>}
+                  </td>
+                  <td><ModeBadge mode={x.paidFrom} /></td>
                   <td><Money value={x.amount} bold /></td><td className="t">{x.paidBy}</td><td className="t">{x.ref}</td>
                   <td className="t">
                     <div className="bills-cell">

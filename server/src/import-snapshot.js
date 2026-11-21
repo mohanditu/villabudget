@@ -66,20 +66,26 @@ try {
   await Promise.all([Settings, ...Object.values(MODELS)].map((m) => m.init())); // create collections/indexes outside the transaction
   const before = Object.fromEntries(await Promise.all(Object.entries(MODELS).map(async ([k, m]) => [k, await m.countDocuments()])));
 
-  // Keep uploaded bills: move them onto the matching new expense (same date, category, amount, paid from, description).
-  // Bills whose expense is not in the snapshot are reported; their files stay in the database (ids are in the backup).
+  // Keep uploaded bills and grocery item lists: move them onto the matching new expense (same date, category,
+  // amount, paid from, description). Ones whose expense is not in the snapshot are reported; bill files stay in
+  // the database and item lists are in the backup.
   const keyOf = (e) => [e.date, e.category, Number(e.amount).toFixed(2), e.paidFrom, (e.description ?? '').trim()].join('|');
   const pool = new Map();
-  for (const e of await Expense.find({ 'bills.0': { $exists: true } }).lean()) {
+  for (const e of await Expense.find({ $or: [{ 'bills.0': { $exists: true } }, { 'items.0': { $exists: true } }] }).lean()) {
     if (!pool.has(keyOf(e))) pool.set(keyOf(e), []);
     pool.get(keyOf(e)).push(e);
   }
   let billsKept = 0;
+  let itemsKept = 0;
   for (const d of docs.expenses) {
     const old = pool.get(keyOf(d))?.shift();
-    if (old) { d.bills = old.bills; billsKept += old.bills.length; }
+    if (!old) continue;
+    if (old.bills?.length) { d.bills = old.bills; billsKept += old.bills.length; }
+    if (old.items?.length && !d.items.length) { d.items = old.items; itemsKept += 1; }
   }
-  const unmatched = [...pool.values()].flat().filter((e) => e.bills.length);
+  const leftOver = [...pool.values()].flat();
+  const unmatched = leftOver.filter((e) => e.bills?.length);
+  const unmatchedItems = leftOver.filter((e) => e.items?.length);
 
   console.log(`\nSnapshot: ${snap.source ?? file}`);
   console.log('                 now in DB  →  after import');
@@ -88,6 +94,8 @@ try {
   console.log(`  settings      start ${s.startMonth}, opening cash ${s.openingCash} / digital ${s.openingDigital}, rule ${s.leaveMethod}${s.leaveMethod === 'dailyRate' ? ` (${s.dailyRate}/day)` : ''}`);
   console.log(`  bills         ${billsKept} kept on their matching expense${unmatched.length ? `; ${unmatched.reduce((n, e) => n + e.bills.length, 0)} on expenses not in the snapshot – their files stay in the database but will no longer be linked:` : ''}`);
   for (const e of unmatched) console.log(`                  ${e.date} ${e.category} ${e.amount} "${e.description}" → ${e.bills.map((b) => b.name).join(', ')}`);
+  console.log(`  grocery items ${itemsKept} item lists kept on their matching expense${unmatchedItems.length ? `; ${unmatchedItems.length} on expenses not in the snapshot – they will be dropped (they stay in the backup):` : ''}`);
+  for (const e of unmatchedItems) console.log(`                  ${e.date} ${e.category} ${e.amount} "${e.description}" → ${e.items.map((i) => i.name).join(', ')}`);
   for (const n of snap.notImported ?? []) console.log(`  not imported: ${n}`);
 
   if (!apply) {
